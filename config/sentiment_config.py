@@ -1,2 +1,2 @@
 
-PATH_DATA = "/Users/rkamran/PROJECTS/Development/ML_Practice/TFHub/imdb_sentiments/dataset"
+PATH_DATA = "/home/rkamran/PROJECTS/MLPractice/TFHub/Elmoembedding/dataset"
