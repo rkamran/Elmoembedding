@@ -13,8 +13,6 @@ import pandas as pd
 import numpy as np
 import keras.layers as layers
 from keras.models import Model
-from keras.utils.multi_gpu_utils import multi_gpu_model
-from keras.models import load_model
 
 
 def download_imdb(data_dir, forced=False):
@@ -62,9 +60,16 @@ def process_datafram(data_frame):
 
     return (text, label)
 
-def create_model(embedding_dim, elmo_embedding, session):
+def create_model(embedding_dim, session):
+    elmo_model = hub.Module("https://tfhub.dev/google/elmo/1", trainable=True)
+    session.run(tf.global_variables_initializer())
+    session.run(tf.tables_initializer())
+
+    elmo_embedding = lambda x: elmo_model(tf.squeeze(tf.cast(x, tf.string)), 
+                                          signature="default",
+                                          as_dict=True)["default"]
     
-    input_text = layers.Input(shape=(1,), dtype="string")
+    input_text = layers.Input(shape=(1,), dtype=tf.string)
     embedding = layers.Lambda(elmo_embedding, output_shape=(embedding_dim, ))(input_text)
     dense = layers.Dense(256, activation="relu")(embedding)
     pred = layers.Dense(1, activation="sigmoid")(dense)
@@ -86,32 +91,22 @@ def create_model(embedding_dim, elmo_embedding, session):
 # elmo_model()
 
 
-session = tf.Session()
-K.set_session(session)
+if __name__ == "__main__":
+    download_imdb(config.PATH_DATA)
+    train_text, train_label = process_datafram(create_dataframe(os.path.sep.join([config.PATH_DATA, "aclImdb", "train"])))
+    test_text, test_label = process_datafram(create_dataframe(os.path.sep.join([config.PATH_DATA, "aclImdb", "test"])))
+
+    print(train_label.shape)
+
+    session = tf.Session()
+    K.set_session(session)
     
-elmo_model = hub.Module("https://tfhub.dev/google/elmo/1", trainable=True)
-session.run(tf.global_variables_initializer())
-session.run(tf.tables_initializer())
+    model = create_model(1024, session)
+    model.summary()
 
-elmo_embedding = lambda x: elmo_model(tf.squeeze(tf.cast(x, tf.string)), 
-                                        signature="default",
-                                        as_dict=True)["default"]
 
-download_imdb(config.PATH_DATA)
-train_text, train_label = process_datafram(create_dataframe(os.path.sep.join([config.PATH_DATA, "aclImdb", "train"])))
-test_text, test_label = process_datafram(create_dataframe(os.path.sep.join([config.PATH_DATA, "aclImdb", "test"])))
+    
+    model.compile(optimizer="adam", metrics=["acc"], loss="binary_crossentropy")
+    model.fit(train_text, train_label, validation_split=0.15, epochs=5, batch_size=32)
 
-print(train_label.shape)
 
-# model = create_model(1024, elmo_embedding, session)
-# model.summary()
-
-# model.compile(optimizer="adam", metrics=["acc"], loss="binary_crossentropy")
-# model.fit(train_text, train_label, validation_split=0.15, epochs=3, batch_size=32)
-
-# model.save("./elmbo_embedding.hdf5")
-
-model = load_model("./elmbo_embedding.hdf5", custom_objects={"elmo_model": elmo_model, "tf":tf})
-model.summary()
-
-print(model.evaluate(test_text, test_label))
